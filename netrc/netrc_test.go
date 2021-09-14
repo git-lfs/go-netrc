@@ -17,6 +17,7 @@ import (
 var expectedMachines = []*Machine{
 	&Machine{Name: "mail.google.com", Login: "joe@gmail.com", Password: "somethingSecret", Account: "justagmail"},
 	&Machine{Name: "ray", Login: "demo", Password: "mypassword", Account: ""},
+	&Machine{Name: "ray", Login: "demo1", Password: "demo1_password", Account: ""},
 	&Machine{Name: "weirdlogin", Login: "uname", Password: "pass#pass", Account: ""},
 	&Machine{Name: "google.com", Login: "alice@google.com", Password: "secure"},
 	&Machine{Name: "", Login: "anonymous", Password: "joe@example.com", Account: ""},
@@ -132,7 +133,7 @@ func TestParseFile(t *testing.T) {
 }
 
 func TestFindMachine(t *testing.T) {
-	m, err := FindMachine("examples/good.netrc", "ray")
+	m, err := FindMachine("examples/good.netrc", "ray", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,12 +144,34 @@ func TestFindMachine(t *testing.T) {
 		t.Errorf("expected m.IsDefault() to be false")
 	}
 
-	m, err = FindMachine("examples/good.netrc", "non.existent")
+	m, err = FindMachine("examples/good.netrc", "ray", "demo1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !eqMachine(m, expectedMachines[4]) {
-		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[3], m)
+	if !eqMachine(m, expectedMachines[2]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[2], m)
+	}
+	if m.IsDefault() {
+		t.Errorf("expected m.IsDefault() to be false")
+	}
+
+	m, err = FindMachine("examples/good.netrc", "ray", "non.existent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eqMachine(m, expectedMachines[5]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[5], m)
+	}
+	if !m.IsDefault() {
+		t.Errorf("expected m.IsDefault() to be true")
+	}
+
+	m, err = FindMachine("examples/good.netrc", "non.existent", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eqMachine(m, expectedMachines[5]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[5], m)
 	}
 	if !m.IsDefault() {
 		t.Errorf("expected m.IsDefault() to be true")
@@ -161,7 +184,7 @@ func TestNetrcFindMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := n.FindMachine("ray")
+	m := n.FindMachine("ray", "")
 	if !eqMachine(m, expectedMachines[1]) {
 		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[1], m)
 	}
@@ -170,7 +193,7 @@ func TestNetrcFindMachine(t *testing.T) {
 	}
 
 	n = &Netrc{}
-	m = n.FindMachine("nonexistent")
+	m = n.FindMachine("nonexistent", "")
 	if m != nil {
 		t.Errorf("expected nil, got %v", m)
 	}
@@ -197,7 +220,7 @@ func TestMarshalText(t *testing.T) {
 	}
 
 	// make sure tokens w/ no value are not serialized
-	m := n.FindMachine("mail.google.com")
+	m := n.FindMachine("mail.google.com", "")
 	m.UpdatePassword("")
 	result, err = n.MarshalText()
 	if err != nil {
@@ -359,26 +382,34 @@ func TestRemoveMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tests := []string{"mail.google.com", "weirdlogin"}
+	tests := []struct {
+                name  string
+                login string
+        }{
+                {"mail.google.com", ""},
+                {"weirdlogin", "uname"},
+        }
 
-	for _, name := range tests {
+	for _, test := range tests {
+		name := test.name
+		loginName := test.login
 		mcount := len(n.machines)
 		// sanity check
-		m := n.FindMachine(name)
+		m := n.FindMachine(name, loginName)
 		if m == nil {
 			t.Fatalf("machine %q not found", name)
 		}
 		if m.IsDefault() {
 			t.Fatalf("expected machine %q, got default instead", name)
 		}
-		n.RemoveMachine(name)
+		n.RemoveMachine(name, loginName)
 
 		if len(n.machines) != mcount-1 {
 			t.Errorf("n.machines count expected %d, got %d", mcount-1, len(n.machines))
 		}
 
 		// make sure Machine is no longer returned by FindMachine()
-		if m2 := n.FindMachine(name); m2 != nil && !m2.IsDefault() {
+		if m2 := n.FindMachine(name, loginName); m2 != nil && !m2.IsDefault() {
 			t.Errorf("Machine %q not removed from Machines list", name)
 		}
 
@@ -429,7 +460,7 @@ func TestUpdateLogin(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		m := n.FindMachine(test.name)
+		m := n.FindMachine(test.name, "")
 		if m.IsDefault() == test.exists {
 			t.Errorf("expected machine %s to not exist, but it did", test.name)
 		} else {
@@ -441,7 +472,7 @@ func TestUpdateLogin(t *testing.T) {
 				continue
 			}
 			m.UpdateLogin(test.newlogin)
-			m := n.FindMachine(test.name)
+			m := n.FindMachine(test.name, "")
 			if m.Login != test.newlogin {
 				t.Errorf("expected new login %q, got %q", test.newlogin, m.Login)
 			}
@@ -491,7 +522,7 @@ func TestUpdatePassword(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		m := n.FindMachine(test.name)
+		m := n.FindMachine(test.name, "")
 		if m.IsDefault() == test.exists {
 			t.Errorf("expected machine %s to not exist, but it did", test.name)
 		} else {
@@ -503,7 +534,7 @@ func TestUpdatePassword(t *testing.T) {
 				continue
 			}
 			m.UpdatePassword(test.newpassword)
-			m = n.FindMachine(test.name)
+			m = n.FindMachine(test.name, "")
 			if m.Password != test.newpassword {
 				t.Errorf("expected new password %q, got %q", test.newpassword, m.Password)
 			}
