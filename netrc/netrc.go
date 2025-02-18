@@ -358,7 +358,7 @@ func newToken(rawb []byte) (*token, error) {
 			t.kind = tkComment // this is a comment
 			return &t, nil
 		}
-		return &t, fmt.Errorf("keyword expected; got " + string(tkind))
+		return &t, fmt.Errorf("keyword expected; got %s", string(tkind))
 	}
 	return &t, nil
 }
